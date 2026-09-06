@@ -21,7 +21,7 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 def create_server() -> FastMCP:
     """MCP サーバーの作成とツール登録"""
-    server = FastMCP("gmail", version="1.0.1")
+    server = FastMCP("gmail")
     
     # ツール登録
     server.tool()(send_email)
