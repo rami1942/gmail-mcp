@@ -445,3 +445,63 @@ async def find_label_by_name_tool(args: Dict[str, Any]) -> str:
     """
     lbl = find_label_by_name(gmail_utils.service, args["name"])
     return f"Label found: {lbl.id}: {lbl.name}"
+
+async def list_filters_tool() -> List[Dict[str, Any]]:
+    """
+    Gmailのフィルタ一覧を取得してリストで返します。
+
+    Args:
+        なし
+
+    Returns: 
+        フィルタIDと条件一覧を返す。
+        List[
+            Dict[str, Any]: {
+                "filter_id": フィルタID,
+                "criteria":
+                    Dict[str, str]: {
+                        "from": 送信元メールアドレス/ドメイン ORによる複数指定可,
+                        "to": 宛先メールアドレス/ドメイン ORによる複数指定可,
+                        "subject": 件名 ORによる複数指定可,
+                        "query": 検索クエリ,
+                        "negatedQuery": 否定検索クエリ,
+                        "hasAttachment": 添付ファイルの有無
+                    },
+                "action": 
+                    Dict[str, Any]: {
+                        "addLabelIds": 追加するラベルIDのリスト,
+                        "removeLabelIds": 削除するラベルIDのリスト,
+                        "forward": 転送先メールアドレス
+                    }
+            }
+        ]
+
+    Note:
+        addLabelIds / removeLabelIds に含まれるラベルIDに対応するラベル名を確認したい場合は、
+        `list_labels` ツールを併用して名前とIDのマッピングを確認してください。
+    """
+    filters = gmail_utils.service.users().settings().filters().list(userId="me").execute()
+
+    lines = []
+    for f in filters.get("filter", []):
+        criteria = remove_empty(f.get("criteria", {}))
+        action = remove_empty(f.get("action", {}))
+
+        item = {"filter_id": f.get("id", "")}
+        if criteria:
+            item["criteria"] = criteria
+        if action:
+            item["action"] = action
+    lines.append(item)
+    return lines
+
+def remove_empty(data: dict) -> dict:
+    """
+    値が存在するもの（空文字 ""、空リスト []、None などを除外）のみ抽出
+    Args:
+        data (dict): 入力の辞書
+
+    Returns:
+        dict: 値が存在する項目のみを含む辞書
+    """
+    return {k: v for k, v in data.items() if v is not None and v != "" and v != []}
