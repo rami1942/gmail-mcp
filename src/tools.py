@@ -492,7 +492,7 @@ async def list_filters_tool() -> List[Dict[str, Any]]:
             item["criteria"] = criteria
         if action:
             item["action"] = action
-    lines.append(item)
+        lines.append(item)
     return lines
 
 def remove_empty(data: dict) -> dict:
