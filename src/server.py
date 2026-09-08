@@ -10,7 +10,7 @@ from tools import (
     send_email, create_draft, read_email, search_emails, delete_email,
     modify_label, create_label_tool, delete_label_tool, list_labels_tool,
     get_or_create_label_tool, update_label_tool, find_label_by_name_tool,
-    list_filters_tool
+    list_filters_tool, create_filter_tool, delete_filter_tool
 )
 
 # 設定
@@ -38,6 +38,8 @@ def create_server() -> FastMCP:
     server.tool()(update_label_tool)
     server.tool()(find_label_by_name_tool)
     server.tool()(list_filters_tool)
+    server.tool()(create_filter_tool)
+    server.tool()(delete_filter_tool)
     return server
 
 def init_gmail_credentials():

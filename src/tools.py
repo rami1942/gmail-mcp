@@ -495,6 +495,86 @@ async def list_filters_tool() -> List[Dict[str, Any]]:
         lines.append(item)
     return lines
 
+
+async def create_filter_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Gmailフィルターを作成します。
+
+    Args:
+        args (Dict[str, Any]): 以下のキーを持つ辞書。
+            - criteria (Dict[str, Any]): フィルター条件（各項目は省略可だが、いずれか1つ以上は指定が必要）。
+                - from (str, 省略可): 送信元メールアドレス/ドメイン（ORによる複数指定可）。
+                - to (str, 省略可): 宛先メールアドレス/ドメイン（ORによる複数指定可）。
+                - subject (str, 省略可): 件名（ORによる複数指定可）。
+                - query (str, 省略可): 検索クエリ。
+                - negatedQuery (str, 省略可): 否定検索クエリ（除外条件）。
+                - hasAttachment (bool, 省略可): 添付ファイルの有無。
+                - excludeChats (bool, 省略可): チャットを除外するかどうか。
+                - size (int, 省略可): メールサイズ（バイト単位）。
+                - sizeComparison (str, 省略可): サイズ比較条件（"larger" または "smaller"）。
+            - action (Dict[str, Any]): フィルター適用時の操作（各項目は省略可）。
+                - addLabelIds (List[str], 省略可): 追加するラベルIDのリスト（例: ["STARRED", "IMPORTANT", "Label_123"]）。
+                - removeLabelIds (List[str], 省略可): 削除するシステムラベルIDのリスト。
+                    - 受信トレイをスキップ（アーカイブ）: ["INBOX"]
+                    - 既読にする: ["UNREAD"]
+                    - 迷惑メールにしない: ["SPAM"]
+                    - ゴミ箱に直行: ["INBOX"] を削除し addLabelIds に ["TRASH"] を指定
+                - forward (str, 省略可): 転送先メールアドレス。
+
+    Note:
+        - `addLabelIds` にカスタムラベル（自分で作成したラベル）を指定する場合、ラベル名ではなくラベルIDが必要です。事前に `list_labels` ツールでラベルIDを確認してください。
+
+    Example:
+        特定の送信元からのメールを受信トレイをスキップして既読にし、スターを付ける場合:
+        {
+            "criteria": {"from": "newsletter@example.com"},
+            "action": {
+                "removeLabelIds": ["INBOX", "UNREAD"],
+                "addLabelIds": ["STARRED"]
+            }
+        }
+
+    Returns:
+        Dict[str, Any]: 作成されたフィルター情報（Gmail API の Filter オブジェクト）。
+            - id (str): 作成されたフィルターの一意なID。
+            - criteria (Dict[str, Any]): 設定されたフィルター条件。
+            - action (Dict[str, Any]): 設定されたフィルター操作。
+    """
+    params = args.get("args", args)
+    if not isinstance(params.get("criteria"), dict):
+        raise ValueError("'criteria' must be a dictionary")
+    if not isinstance(params.get("action"), dict):
+        raise ValueError("'action' must be a dictionary")
+
+    body = {
+        "criteria": params["criteria"],
+        "action": params["action"],
+    }
+    return gmail_utils.service.users().settings().filters().create(
+        userId="me", body=body
+    ).execute()
+
+
+async def delete_filter_tool(args: Dict[str, Any]) -> str:
+    """
+    Gmailフィルターを削除します。
+
+    Args:
+        args (Dict[str, Any]):
+            - filter_id (str): 削除対象のフィルターID。
+
+    Returns:
+        str: 削除結果メッセージ。
+    """
+    filter_id = args.get("filter_id")
+    if not filter_id:
+        raise ValueError("'filter_id' is required")
+
+    gmail_utils.service.users().settings().filters().delete(
+        userId="me", id=filter_id
+    ).execute()
+    return f"Filter deleted: {filter_id}"
+
 def remove_empty(data: dict) -> dict:
     """
     値が存在するもの（空文字 ""、空リスト []、None などを除外）のみ抽出
