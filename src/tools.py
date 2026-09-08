@@ -555,6 +555,121 @@ async def create_filter_tool(args: Dict[str, Any]) -> Dict[str, Any]:
     ).execute()
 
 
+async def update_filter_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    既存のGmailフィルターを更新します。
+
+    Gmail APIにはフィルター更新APIが存在しないため、既存フィルターを取得・マージした上で新規作成し、
+    作成成功後に旧フィルターを削除する安全な方式で更新を行います。
+    そのため、更新後はフィルターIDが新しくなります。
+
+    Args:
+        args (Dict[str, Any]): 以下のキーを持つ辞書。
+            - filter_id (str): 更新対象のフィルターID（必須）。
+            - criteria (Dict[str, Any], 省略可): 更新・追加するフィルター条件。
+                - from (str, 省略可): 送信元メールアドレス/ドメイン（ORによる複数指定可）。
+                - to (str, 省略可): 宛先メールアドレス/ドメイン（ORによる複数指定可）。
+                - subject (str, 省略可): 件名（ORによる複数指定可）。
+                - query (str, 省略可): 検索クエリ。
+                - negatedQuery (str, 省略可): 否定検索クエリ（除外条件）。
+                - hasAttachment (bool, 省略可): 添付ファイルの有無。
+                - excludeChats (bool, 省略可): チャットを除外するかどうか。
+                - size (int, 省略可): メールサイズ（バイト単位）。
+                - sizeComparison (str, 省略可): サイズ比較条件（"larger" または "smaller"）。
+            - action (Dict[str, Any], 省略可): 更新・追加するフィルター操作。
+                - addLabelIds (List[str], 省略可): 追加するラベルIDのリスト（例: ["STARRED", "IMPORTANT", "Label_123"]）。
+                - removeLabelIds (List[str], 省略可): 削除するシステムラベルIDのリスト。
+                    - 受信トレイをスキップ（アーカイブ）: ["INBOX"]
+                    - 既読にする: ["UNREAD"]
+                    - 迷惑メールにしない: ["SPAM"]
+                    - ゴミ箱に直行: ["INBOX"] を削除し addLabelIds に ["TRASH"] を指定
+                - forward (str, 省略可): 転送先メールアドレス。
+
+    Note:
+        - `criteria` または `action` のいずれか1つ以上の指定が必要です。指定されなかったフィールドは既存の設定が引き継がれます。
+        - 既存の項目を削除したい場合は、値に空文字 "" や None を指定してください。
+        - `addLabelIds` にカスタムラベルを指定する場合、ラベル名ではなくラベルIDが必要です。事前に `list_labels_tool` でラベルIDを確認してください。
+
+    Example:
+        フィルターID "AN9n_v... " のアクションにスター追加を指定し、件名条件を更新する場合:
+        {
+            "filter_id": "AN9n_v...",
+            "criteria": {"subject": "[重要] 新着通知"},
+            "action": {
+                "addLabelIds": ["STARRED"]
+            }
+        }
+
+    Returns:
+        Dict[str, Any]: 新しく作成されたフィルター情報（Gmail API の Filter オブジェクト）。
+            - id (str): 新しく割り当てられたフィルターID。
+            - previous_filter_id (str): 更新前の旧フィルターID。
+            - criteria (Dict[str, Any]): 設定されたフィルター条件。
+            - action (Dict[str, Any]): 設定されたフィルター操作。
+    """
+    params = args.get("args", args)
+    filter_id = params.get("filter_id")
+    if not filter_id:
+        raise ValueError("'filter_id' is required")
+
+    new_criteria = params.get("criteria")
+    new_action = params.get("action")
+
+    if new_criteria is None and new_action is None:
+        raise ValueError("At least one of 'criteria' or 'action' must be provided for update")
+
+    if new_criteria is not None and not isinstance(new_criteria, dict):
+        raise ValueError("'criteria' must be a dictionary if provided")
+    if new_action is not None and not isinstance(new_action, dict):
+        raise ValueError("'action' must be a dictionary if provided")
+
+    service = gmail_utils.service
+
+    # 1. 既存フィルターの取得
+    try:
+        existing = service.users().settings().filters().get(userId="me", id=filter_id).execute()
+    except Exception as e:
+        raise ValueError(f"Failed to retrieve filter with ID '{filter_id}': {e}")
+
+    merged_criteria = existing.get("criteria", {}).copy()
+    if new_criteria is not None:
+        merged_criteria.update(new_criteria)
+    merged_criteria = remove_empty(merged_criteria)
+
+    merged_action = existing.get("action", {}).copy()
+    if new_action is not None:
+        merged_action.update(new_action)
+    merged_action = remove_empty(merged_action)
+
+    if not merged_criteria:
+        raise ValueError("Updated filter criteria cannot be empty")
+    if not merged_action:
+        raise ValueError("Updated filter action cannot be empty")
+
+    body = {
+        "criteria": merged_criteria,
+        "action": merged_action,
+    }
+
+    # 2. 新フィルターの作成
+    created = service.users().settings().filters().create(
+        userId="me", body=body
+    ).execute()
+
+    # 3. 旧フィルターの削除
+    try:
+        service.users().settings().filters().delete(
+            userId="me", id=filter_id
+        ).execute()
+    except Exception as e:
+        created["previous_filter_id"] = filter_id
+        created["warning"] = f"New filter created, but failed to delete previous filter '{filter_id}': {e}"
+        return created
+
+    created["previous_filter_id"] = filter_id
+    return created
+
+
 async def delete_filter_tool(args: Dict[str, Any]) -> str:
     """
     Gmailフィルターを削除します。
@@ -566,7 +681,8 @@ async def delete_filter_tool(args: Dict[str, Any]) -> str:
     Returns:
         str: 削除結果メッセージ。
     """
-    filter_id = args.get("filter_id")
+    params = args.get("args", args)
+    filter_id = params.get("filter_id")
     if not filter_id:
         raise ValueError("'filter_id' is required")
 

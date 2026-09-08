@@ -50,9 +50,9 @@ https://developers.google.com/workspace/gmail/api/reference/rest?hl=ja
 
 
 ---
-## T0003 フィルターの更新機能(update_filter)
-- **状態** : 未着手
+## T0008 フィルターの更新機能(update_filter)
+- **状態** : 完了
 - **要求** : 
 重複条件の除去やフィルターの統合・新規追加を対話経由で完結できるよう、フィルターの更新を行えるMCPツールの実装
 - **備考** :
-Gmail APIにはフィルターの更新は提供されていないためタスクを分割して個別に対処する
+Gmail APIにはフィルター更新APIが提供されていないため、既存フィルター取得・マージ・新規作成・旧フィルター削除の安全な手順を踏む `update_filter_tool` として実装完了
